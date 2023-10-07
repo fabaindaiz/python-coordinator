@@ -1,4 +1,5 @@
 import logging
+import backoff
 from enum import Enum, auto
 from typing import Callable, Dict, Type
 
@@ -24,15 +25,19 @@ class ExceptionHandler:
     
     def set_exception_behavior(self, exception_type: Type[Exception], behavior: ExceptionAction) -> None:
         """Establece el comportamiento para una excepción específica."""
-        self.exception_map[exception_type] = behavior
+        self.exception_behavior[exception_type] = behavior
+    
+    def get_exception_behavior(self, exception_type: Type[Exception]) -> ExceptionAction:
+        """Obtiene el comportamiento para una excepción específica."""
+        return self.exception_behavior.get(exception_type, ExceptionAction.RAISE)
+
 
     def handle_exception(self, exception: Exception) -> None:
-        action = self.exception_map.get(type(exception), ExceptionAction.RAISE)
+        action = self.get_exception_behavior(type(exception))
 
-        if action == ExceptionAction.RETRY:
-            raise exception
-        elif action == ExceptionAction.LOG_AND_RETRY:
-            logger.error(f"Error: {exception}. Retrying...")
+        if action in [ExceptionAction.RETRY, ExceptionAction.LOG_AND_RETRY]:
+            if action == ExceptionAction.LOG_AND_RETRY:
+                logger.error(f"Error: {exception}. Retrying...")
             raise exception
         elif action == ExceptionAction.LOG_AND_CONTINUE:
             logger.error(f"Error: {exception}. Continuing...")
@@ -41,35 +46,30 @@ class ExceptionHandler:
             return
         else:
             raise exception
+        
+    def _need_retry(self, exception: Exception) -> bool:
+        """Determina si necesita reintentar basado en la excepción."""
+        action = self.get_exception_behavior(type(exception))
+        return action in [ExceptionAction.RETRY, ExceptionAction.LOG_AND_RETRY]
     
-    def handle(self, function: Callable, args=[], kwargs={}, max_retries: int = 10) -> None:
-        for _ in range(max_retries):
+    def handle(self, function: Callable, *args, **kwargs) -> None:
+        @backoff.on_exception(backoff.expo,
+                              Exception,
+                              max_tries=10,
+                              giveup=lambda e: not self._need_retry(e))
+        def wrapped_function():
             try:
-                function(*args, **kwargs)
-                return
-            except Exception as e:
-                action = self.exception_map.get(type(e), ExceptionAction.RAISE)
-
-                if action in [ExceptionAction.RETRY, ExceptionAction.LOG_AND_RETRY]:
-                    if action == ExceptionAction.LOG_AND_RETRY:
-                        logger.error(f"Error: {e}. Retrying...")
-                    continue
-                elif action == ExceptionAction.LOG_AND_CONTINUE:
-                    logger.error(f"Error: {e}. Continuing...")
-                    return
-                elif action == ExceptionAction.SUPPRESS:
-                    return
-                else:
-                    raise e
-        else:
-            raise Exception("Max retries reached")
+                return function(*args, **kwargs)
+            except Exception as exception:
+                self.handle_exception(exception)
+        wrapped_function()
 
 
 if __name__ == "__main__":
     import random
 
     def fetch_data_from_server():
-        rnd = random.randint(1, 6)
+        rnd = random.randint(1, 3)
         
         if rnd == 1:
             raise TimeoutError("Server did not respond!")

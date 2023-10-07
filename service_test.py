@@ -41,11 +41,11 @@ class Module1(BaseModule):
     def services(self, service1: Service1, service2: Service2) -> None:
         self.service1 = service1
         self.service2 = service2
-        self.service1.work()
-        self.service2.work() 
     
     def on_start(self) -> None:
         self.services()
+        self.service1.work()
+        self.service2.work()
         time.sleep(3)
     
     def run(self):
