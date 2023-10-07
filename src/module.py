@@ -1,7 +1,7 @@
 import time
 import logging
 import threading
-from typing import Type
+from typing import Callable, Type
 from src.service import ServiceManager
 from src.exception import ExceptionAction, ExceptionHandler
 
@@ -35,6 +35,7 @@ class ModuleRunner:
         self.module: Type[BaseModule] = module
         self.service: ServiceManager = service
         self.exception: ExceptionHandler = exception
+        
         self.args: list = args
         self.kwargs: dict = kwargs
         
@@ -64,8 +65,9 @@ class ModuleRunner:
                 if self.watchdog_active:
                     self.restart(watchdog=False)
             self.heartbeat_event.clear()
+    
 
-    def start(self, watchdog=True) -> None:
+    def _start_thread(self) -> None:
         if self.thread_active:
             logger.warning(f"Module {self.module.__name__} is already running.")
             return
@@ -73,25 +75,45 @@ class ModuleRunner:
         self.module_thread = threading.Thread(target=self._runner)
         self.module_thread.start()
         self.thread_active = True
+    
+    def _start_watchdog(self) -> None:
+        if self.watchdog_active:
+            logger.warning(f"Watchdog for module {self.module.__name__} is already running.")
+            return
         
+        self.watchdog_thread = threading.Thread(target=self._watchdog)
+        self.watchdog_thread.start()
+        self.watchdog_active = True
+
+    def start(self, watchdog=True) -> None:
+        self._start_thread()
         if watchdog:
-            self.watchdog_active = True
-            self.watchdog_thread = threading.Thread(target=self._watchdog)
-            self.watchdog_thread.start()
+            self._start_watchdog()
 
         logger.info(f"Module {self.module.__name__} started.")
 
-    def stop(self, watchdog=True) -> None:
+    
+    def _stop_thread(self) -> None:
         if not self.thread_active:
             logger.warning(f"Module {self.module.__name__} is not running.")
             return
         
-        if watchdog:
-            self.watchdog_active = False
-            self.watchdog_thread.join()
-        
         self.thread_active = False
         self.module_thread.join()
+    
+    def _stop_watchdog(self) -> None:
+        if not self.watchdog_active:
+            logger.warning(f"Watchdog for module {self.module.__name__} is not running.")
+            return
+        
+        self.watchdog_active = False
+        self.watchdog_thread.join()
+
+    def stop(self, watchdog=True) -> None:
+        if watchdog:
+            self._stop_watchdog()
+        self._stop_thread()
+
 
     def restart(self, watchdog=True) -> None:
         self.stop(watchdog)

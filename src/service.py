@@ -27,14 +27,17 @@ class ServiceManager:
             raise Exception(f"Service {service.__name__} not registered")
         return self.services[service]()
     
+    def _injected_kwargs(self, function: Callable) -> Dict[str, Type[Any]]:
+        return {name: service for name, service in function.__annotations__.items() if service in self.services}
+    
     def provide(self, function: Callable) -> None:
-        injected_kwargs = {name: self.get_service(service) for name, service in function.__annotations__.items() if service in self.services}
+        injected_kwargs = self._injected_kwargs(function)
         function(**injected_kwargs)
     
     def inject(self, function: Callable) -> Callable:
         @wraps(function)
         def wrapper(*args, **original_kwargs):
-            injected_kwargs = {name: self.get_service(service) for name, service in function.__annotations__.items() if service in self.services}
+            injected_kwargs = self._injected_kwargs(function)
             injected_kwargs.update(original_kwargs)
             return function(*args, **injected_kwargs)
         return wrapper

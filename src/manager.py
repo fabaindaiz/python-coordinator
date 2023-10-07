@@ -22,6 +22,15 @@ class ApplicationManager:
         
         runner = ModuleRunner(module, self.service_manager, self.exception_handler)
         self.modules[name] = runner
+    
+    def unregister_module(self, module: Type[BaseModule]) -> None:
+        """Elimina un módulo del ApplicationManager."""
+        name = module.__name__
+        if not name in self.modules:
+            raise ValueError(f"Module {name} is not registered.")
+        
+        self.modules[name].stop()
+        del self.modules[name]
 
     def start_all(self) -> None:
         """Inicia todos los módulos registrados."""

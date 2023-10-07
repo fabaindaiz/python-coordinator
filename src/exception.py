@@ -20,7 +20,7 @@ class ExceptionHandler:
     def __init__(self) -> None:
         # Mapa de excepciones a acciones generales
         # El valor default es RAISE, pero puede ser personalizado al inicializar
-        self.exception_map: Dict[Type[Exception], ExceptionAction] = {}
+        self.exception_behavior: Dict[Type[Exception], ExceptionAction] = {}
     
     def set_exception_behavior(self, exception_type: Type[Exception], behavior: ExceptionAction) -> None:
         """Establece el comportamiento para una excepción específica."""
