@@ -1,13 +1,18 @@
 import time
 import random
 import logging
-from src.exception import ExceptionAction, ExceptionHandler
+from src.exception import ExceptionAction
 from src.manager import ApplicationManager
 from src.service import ServiceManager
-from src.module import BaseModule
+from src.module import ModuleRunner, BaseModule
 
 logger = logging.getLogger(__name__)
 logging.basicConfig(level=logging.INFO, handlers=[logging.StreamHandler()])
+
+
+class RetryException(Exception):
+    """Una excepción que indica que una operación debe reintentarse."""
+    action = ExceptionAction.RETRY
 
 
 class Service1:
@@ -26,24 +31,17 @@ class Service2:
     def work(self) -> None:
         print(f"Service2 working with {self.random_num}", flush=True)
 
-service_manager = ServiceManager()
-service_manager.register_singleton(Service1)
-service_manager.register_factory(Service2)
-
-
-class RetryException(Exception):
-    """Una excepción que indica que una operación debe reintentarse."""
-    pass
 
 class Module1(BaseModule):
-    
-    @service_manager.inject
+
+    def __init__(self, runner: ModuleRunner) -> None:
+        runner.service.provide(self.services)
+
     def services(self, service1: Service1, service2: Service2) -> None:
         self.service1 = service1
         self.service2 = service2
     
     def on_start(self) -> None:
-        self.services()
         self.service1.work()
         self.service2.work()
         time.sleep(3)
@@ -57,8 +55,8 @@ class Module1(BaseModule):
 
 class Module2(BaseModule):
 
-    def __init__(self, service: ServiceManager, exception: ExceptionHandler) -> None:
-        service.provide(self.services)
+    def __init__(self, runner: ModuleRunner) -> None:
+        runner.service.provide(self.services)
     
     def services(self, service1: Service1, service2: Service2) -> None:
         service1.work()
@@ -72,10 +70,11 @@ class Module2(BaseModule):
 
 
 if __name__ == "__main__":
-    exception_handler = ExceptionHandler()
-    exception_handler.set_exception_behavior(RetryException, ExceptionAction.RETRY)
+    service_manager = ServiceManager()
+    service_manager.register_singleton(Service1)
+    service_manager.register_factory(Service2)
 
-    app_manager = ApplicationManager(service_manager, exception_handler)
+    app_manager = ApplicationManager(service_manager)
     app_manager.register_module(Module1)
     app_manager.register_module(Module2)
 

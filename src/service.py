@@ -6,6 +6,13 @@ from dependency_injector import providers
 logger = logging.getLogger(__name__)
 
 
+class ServiceAlreadyRegisteredError(Exception):
+    """Excepción lanzada cuando un servicio ya está registrado."""
+
+class ServiceNotRegisteredError(Exception):
+    """Excepción lanzada cuando un servicio no está registrado."""
+
+
 class ServiceManager:
     
     def __init__(self) -> None:
@@ -13,7 +20,7 @@ class ServiceManager:
 
     def _register(self, constructor: type[Any], service: Type[Any], *args, **kwargs) -> None:
         if service in self.services:
-            raise Exception(f"Service {service.__name__} already registered")
+            raise ServiceAlreadyRegisteredError(f"Service {service.__name__} already registered")
         self.services[service] = constructor(service, *args, **kwargs)
 
     def register_factory(self, service: Type[Any], *args, **kwargs) -> None:
@@ -24,10 +31,10 @@ class ServiceManager:
     
     def get_service(self, service: Type[Any]) -> object:
         if not service in self.services:
-            raise Exception(f"Service {service.__name__} not registered")
+            raise ServiceNotRegisteredError(f"Service {service.__name__} not registered")
         return self.services[service]()
     
-    def _injected_services(self, function: Callable) -> Dict[str, Type[Any]]:
+    def _injected_services(self, function: Callable) -> Dict[str, object]:
         return {name: self.get_service(service) for name, service in function.__annotations__.items() if service in self.services}
     
     def provide(self, function: Callable) -> None:
@@ -36,9 +43,9 @@ class ServiceManager:
     
     def inject(self, function: Callable) -> Callable:
         @wraps(function)
-        def wrapper(*args, **original_kwargs):
+        def wrapper(*args, **kwargs):
             injected_kwargs = self._injected_services(function)
-            injected_kwargs.update(original_kwargs)
+            injected_kwargs.update(kwargs)
             return function(*args, **injected_kwargs)
         return wrapper
 
