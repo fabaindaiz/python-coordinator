@@ -1,8 +1,8 @@
 import logging
 from typing import Dict, Type
-from service import ServiceManager
-from exception import ExceptionHandler
-from module import BaseModule, ModuleRunner
+from .service import ServiceManager
+from .exception import ExceptionHandler
+from .module import BaseModule, ModuleRunner
 
 logger = logging.getLogger(__name__)
 

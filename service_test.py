@@ -1,8 +1,8 @@
 import time
 import random
 import logging
-from src.exception import ExceptionAction
 from src.manager import ApplicationManager
+from src.exception import ExceptionAction
 from src.service import ServiceManager
 from src.module import ModuleRunner, BaseModule
 

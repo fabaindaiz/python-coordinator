@@ -2,8 +2,8 @@ import time
 import logging
 import threading
 from typing import Any, Optional, Type
-from service import ServiceManager
-from exception import ExceptionAction, ExceptionHandler
+from .exception import ExceptionAction, ExceptionHandler
+from .service import ServiceManager
 
 logger = logging.getLogger(__name__)
 
@@ -31,7 +31,13 @@ class BaseModule:
 
 
 class ModuleRunner:
-    def __init__(self, module: Type[BaseModule], service: ServiceManager, exception: ExceptionHandler, heartbeat_interval: int = 1, *args, **kwargs)-> None:
+    def __init__(self,
+                 module: Type[BaseModule],
+                 service: ServiceManager,
+                 exception: ExceptionHandler,
+                 heartbeat_interval: int = 1,
+                 heartbeat_timeout: int = 10,
+                 *args, **kwargs)-> None:
         self.service: ServiceManager = service or ServiceManager()
         self.exception: ExceptionHandler = exception or ExceptionHandler()
         
@@ -46,6 +52,7 @@ class ModuleRunner:
 
         self.heartbeat_event: threading.Event = threading.Event()
         self.heartbeat_interval: int = heartbeat_interval
+        self.heartbeat_timeout: int = heartbeat_timeout
 
     def _runner(self) -> None:
         try:
@@ -59,10 +66,6 @@ class ModuleRunner:
             instance.on_stop()
         except Exception as exception:
             self.exception.handle_exception(exception)
-        finally:
-            instance.on_stop()
-            if self.thread_active:
-                self.stop()
 
     def _watchdog(self) -> None:
         while self.watchdog_active:
