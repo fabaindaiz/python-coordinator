@@ -1,16 +1,16 @@
 import time
 import logging
 import threading
-from typing import Callable, Type
-from src.service import ServiceManager
-from src.exception import ExceptionAction, ExceptionHandler
+from typing import Any, Optional, Type
+from .exception import ExceptionAction, ExceptionHandler
+from .service import ServiceManager
 
 logger = logging.getLogger(__name__)
 
 
 class BaseModule:
 
-    def __init__(self, service: ServiceManager, exception: ExceptionHandler) -> None:
+    def __init__(self, runner: "ModuleRunner") -> None:
         pass
 
     def on_start(self):
@@ -31,29 +31,38 @@ class BaseModule:
 
 
 class ModuleRunner:
-    def __init__(self, module: Type[BaseModule], service: ServiceManager, exception: ExceptionHandler, *args, **kwargs) -> None:
-        self.module: Type[BaseModule] = module
-        self.service: ServiceManager = service
-        self.exception: ExceptionHandler = exception
+    def __init__(self,
+                 module: Type[BaseModule],
+                 service: ServiceManager,
+                 exception: ExceptionHandler,
+                 heartbeat_interval: int = 1,
+                 heartbeat_timeout: int = 10,
+                 *args, **kwargs)-> None:
+        self.service: ServiceManager = service or ServiceManager()
+        self.exception: ExceptionHandler = exception or ExceptionHandler()
         
-        self.args: list = args
+        self.module: Type[BaseModule] = module
+        self.args: tuple[Any, ...] = args
         self.kwargs: dict = kwargs
         
         self.module_thread: threading.Thread = None
         self.thread_active: bool = False
         self.watchdog_thread: threading.Thread = None
         self.watchdog_active: bool = False
+
         self.heartbeat_event: threading.Event = threading.Event()
+        self.heartbeat_interval: int = heartbeat_interval
+        self.heartbeat_timeout: int = heartbeat_timeout
 
     def _runner(self) -> None:
         try:
-            instance = self.module(self.service, self.exception, *self.args, **self.kwargs)
+            instance = self.module(self, *self.args, **self.kwargs)
             instance.on_start()
             while self.thread_active:
                 instance.run()
                 instance.heartbeat()
                 self.heartbeat_event.set()
-                time.sleep(1)
+                time.sleep(self.heartbeat_interval)
             instance.on_stop()
         except Exception as exception:
             self.exception.handle_exception(exception)
@@ -85,13 +94,6 @@ class ModuleRunner:
         self.watchdog_thread.start()
         self.watchdog_active = True
 
-    def start(self, watchdog=True) -> None:
-        self._start_thread()
-        if watchdog:
-            self._start_watchdog()
-
-        logger.info(f"Module {self.module.__name__} started.")
-
     
     def _stop_thread(self) -> None:
         if not self.thread_active:
@@ -100,6 +102,7 @@ class ModuleRunner:
         
         self.thread_active = False
         self.module_thread.join()
+        self.module_thread = None
     
     def _stop_watchdog(self) -> None:
         if not self.watchdog_active:
@@ -108,12 +111,20 @@ class ModuleRunner:
         
         self.watchdog_active = False
         self.watchdog_thread.join()
+        self.watchdog_thread = None
+    
+
+    def start(self, watchdog=True) -> None:
+        self._start_thread()
+        if watchdog:
+            self._start_watchdog()
+
+        logger.info(f"Module {self.module.__name__} started.")
 
     def stop(self, watchdog=True) -> None:
         if watchdog:
             self._stop_watchdog()
         self._stop_thread()
-
 
     def restart(self, watchdog=True) -> None:
         self.stop(watchdog)
@@ -142,8 +153,8 @@ if __name__=="__main__":
     handler.set_exception_behavior(ValueError, ExceptionAction.LOG_AND_RETRY)
 
     # Crear runners para los módulos
-    ping_runner = ModuleRunner(PingModule, handler)
-    unstable_runner = ModuleRunner(UnstableModule, handler)
+    ping_runner = ModuleRunner(PingModule, None, handler)
+    unstable_runner = ModuleRunner(UnstableModule, None, handler)
 
     # Iniciar los runners
     ping_runner.start()

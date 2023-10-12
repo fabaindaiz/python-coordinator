@@ -13,41 +13,40 @@ class StateSaver:
         return self
 
     def save_state(self):
-        """ Guarda el estado del objeto en memoria. """
+        """Guarda el estado del objeto en memoria."""
+        if not self._state:
+            raise ValueError("State has not been saved yet.")
         self._state = {attr: getattr(self.obj, attr) for attr in self.attributes}
 
     def restore_state(self):
-        """ Restaura el estado del objeto desde memoria. """
+        """Restaura el estado del objeto desde memoria."""
         for attr, value in self._state.items():
             setattr(self.obj, attr, value)
     
     def to_string(self) -> str:
-        """
-        Serializa el estado del objeto a una cadena que puede ser almacenada en una base de datos.
-        """
+        """Serializa el estado del objeto a una cadena que puede ser almacenada en una base de datos."""
         binary_data = pickle.dumps(self._state)
         return base64.b64encode(binary_data).decode('utf-8')
 
     def from_string(self, data_str: str):
-        """
-        Deserializa el estado del objeto desde una cadena obtenida de una base de datos.
-        """
+        """Deserializa el estado del objeto desde una cadena obtenida de una base de datos."""
         binary_data = base64.b64decode(data_str.encode('utf-8'))
         self._state = pickle.loads(binary_data)
-        for attr, value in self._state.items():
-            setattr(self.obj, attr, value)
+        self.restore_state()
 
     def to_file(self, filename):
-        """ Guarda el estado del objeto en un archivo. """
+        """Guarda el estado del objeto en un archivo."""
         with open(filename, 'wb') as file:
             pickle.dump(self._state, file)
 
     def from_file(self, filename):
-        """ Restaura el estado del objeto desde un archivo. """
-        with open(filename, 'rb') as file:
-            self._state = pickle.load(file)
-        for attr, value in self._state.items():
-            setattr(self.obj, attr, value)
+        """Restaura el estado del objeto desde un archivo."""
+        try:
+            with open(filename, 'rb') as file:
+                self._state = pickle.load(file)
+            self.restore_state()
+        except (FileNotFoundError, PermissionError) as e:
+            raise e from None
 
 
 if __name__ == "__main__":
